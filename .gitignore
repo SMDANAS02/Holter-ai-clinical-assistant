@@ -1,0 +1,112 @@
+# Java / Maven
+/target/
+*.class
+*.jar
+*.war
+
+# Build artifacts
+/build/
+
+# Python
+/.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+
+# IDEs
+.idea/
+.vscode/
+
+# Logs
+/logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+
+# Outputs
+findings.json
+
+# Presentations
+*.pptx
+
+# Sensitive files
+.env
+.env.local
+.env.*.local
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+*.log
+*.ctxt
+.mtj.tmp/
+hs_err_pid*
+
+# IDE - IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# IDE - Eclipse
+.classpath
+.project
+.settings/
+bin/
+
+# IDE - VS Code
+.vscode/
+*.code-workspace
+
+# IDE - NetBeans
+nbproject/private/
+build/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Application specific
+findings.json
+config.properties
+data/
+*.dat
+*.hea
+*.csv
+
+# Environment
+.env
+*.env
+# Holter Dashboard - local config (never commit API keys)
+.holter_dashboard_config/

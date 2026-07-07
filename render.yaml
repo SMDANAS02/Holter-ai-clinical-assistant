@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: holter-backend
+    env: static
+    plan: free
+    buildCommand: mvn -f backend/pom.xml -DskipTests package
+    startCommand: java -jar backend/target/holter-monitor-ai-pipeline-1.0-SNAPSHOT.jar
+    envVars:
+      - key: DATABASE_URL
+      - key: SUPABASE_URL
+      - key: SUPABASE_ANON_KEY
+
+  - type: web
+    name: holter-dashboard
+    env: python
+    plan: free
+    buildCommand: pip install -r dashboard/requirements.txt
+    startCommand: streamlit run dashboard/st_dashboard.py --server.port $PORT
+    envVars:
+      - key: SUPABASE_URL
+      - key: SUPABASE_ANON_KEY
+      - key: DATABASE_URL
+
+# Notes:
+# - Adjust service `env` and `plan` as needed in Render.
+# - For private builds or larger plans, update `plan` values.

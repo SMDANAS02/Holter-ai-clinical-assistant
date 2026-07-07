@@ -1,0 +1,36 @@
+# Holter Monitor AI Pipeline Configuration
+# Copy this file to config.properties and customize as needed
+
+# Data Ingestion Settings
+ingestion.chunkSize=10000
+ingestion.defaultSamplingRate=360
+
+# Signal Processing Settings
+signal.bandpass.lowFreq=0.5
+signal.bandpass.highFreq=50.0
+signal.qualityThreshold=0.8
+
+# Feature Engineering Settings
+features.hrvWindowMinutes=5
+features.sleepStartHour=22.0
+features.sleepEndHour=6.0
+features.transitionWindowHours=2.0
+
+# Baseline Learning Settings
+baseline.minBeatsPerContext=10
+baseline.contextBucketHourBins=6
+
+# Anomaly Detection Settings
+anomaly.deviationThreshold=3.0
+anomaly.minAnomalyDuration=2.0
+anomaly.gapToleranceSec=5.0
+
+# Agent Layer Settings
+agent.anthropicApiKey=${ANTHROPIC_API_KEY}
+agent.geminiApiKey=${GOOGLE_API_KEY}
+agent.modelName=claude-3-5-sonnet-20241022
+agent.maxTokens=4096
+
+# Dashboard Settings
+dashboard.port=8501
+dashboard.timelineHeight=400

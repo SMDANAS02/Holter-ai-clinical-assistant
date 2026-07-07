@@ -1,0 +1,1 @@
+web: streamlit run dashboard/st_dashboard.py --server.port $PORT

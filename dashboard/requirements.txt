@@ -1,0 +1,12 @@
+# Holter Monitor AI Dashboard – Python dependencies
+# Install with: pip install -r requirements.txt
+
+streamlit>=1.31.0
+plotly>=5.18.0
+anthropic>=0.25.0      # Optional: enables Claude AI chat (needs ANTHROPIC_API_KEY)
+google-generativeai>=0.3.0  # Optional: enables Gemini AI chat (needs GOOGLE_API_KEY)
+psycopg2-binary>=2.9.9  # PostgreSQL adapter for Supabase database connection
+python-dotenv>=1.0.0    # Load environment variables from .env
+streamlit-supabase-auth>=1.0.0  # Supabase authentication for Streamlit
+PyPDF2>=3.0.0          # PDF file extraction and parsing
+reportlab>=4.0.0       # PDF generation for clinical reports
