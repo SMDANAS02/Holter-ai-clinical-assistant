@@ -16,7 +16,7 @@ FROM python:3.11-slim
 
 # Install Java runtime (needed for HolterAgentCLI)
 RUN apt-get update && \
-    apt-get install -y openjdk-17-jre-headless && \
+    apt-get install -y openjdk-21-jre-headless && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
