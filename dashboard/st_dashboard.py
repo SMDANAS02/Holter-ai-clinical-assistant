@@ -652,7 +652,8 @@ def query_groq_direct(question: str) -> str:
         
         groq_key = os.getenv("GROQ_API_KEY", "").strip()
         if not groq_key:
-            return "⚠️ GROQ_API_KEY not set in .env - configure it to enable AI analysis"
+            st.warning("⚠️ GROQ_API_KEY environment variable not found")
+            return "⚠️ GROQ_API_KEY not configured. Add it to Render environment variables: Settings → Environment → GROQ_API_KEY"
         
         headers = {
             "Authorization": f"Bearer {groq_key}",
@@ -686,14 +687,22 @@ def query_groq_direct(question: str) -> str:
             data = response.json()
             return data["choices"][0]["message"]["content"]
         elif response.status_code == 401:
-            return "❌ Groq API key invalid - check GROQ_API_KEY in .env"
+            st.error("❌ Groq API key invalid or expired")
+            return "❌ Groq API key is invalid or expired. Regenerate it at https://console.groq.com and update GROQ_API_KEY in Render settings."
         elif response.status_code == 429:
             return "⚠️ Groq rate limited - try again in a moment"
         else:
-            return f"❌ Groq API error {response.status_code}: {response.text[:100]}"
+            error_msg = f"Groq API error {response.status_code}"
+            st.error(f"❌ {error_msg}")
+            return f"❌ {error_msg}: {response.text[:200]}"
     except requests.exceptions.Timeout:
-        return "❌ Groq API timeout - request took too long"
+        st.error("❌ Groq API timeout - taking too long")
+        return "❌ Groq API timeout - request took too long (30s). Check network on Render."
+    except requests.exceptions.ConnectionError as e:
+        st.error("❌ Cannot connect to Groq API")
+        return f"❌ Cannot reach Groq API: {str(e)[:150]}"
     except Exception as e:
+        st.error(f"❌ AI Error: {str(e)[:100]}")
         return f"❌ Error: {str(e)[:150]}"
 
 def query_holter_agent(question: str, findings: Dict, external_report: Optional[Dict] = None) -> str:
@@ -814,6 +823,15 @@ user_email = user.get("email") if user else "Guest"
 
 st.markdown(f"# ❤️ Holter Monitor AI Dashboard")
 st.markdown(f"**User:** {user_email}")
+
+# Show AI connection status
+col1, col2 = st.columns([3, 1])
+with col2:
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    if groq_key:
+        st.success("✅ Groq AI Ready")
+    else:
+        st.error("❌ AI Not Configured")
 
 findings = {
     "patientId": f"USER_{user_id[:8] if user_id else 'demo'}",
