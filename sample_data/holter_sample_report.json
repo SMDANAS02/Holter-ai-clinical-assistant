@@ -1,0 +1,72 @@
+{
+  "patientId": "DEMO_PATIENT_001",
+  "recordingDays": 7,
+  "totalBeatsProcessed": 714240,
+  "events": [
+    {
+      "eventId": "evt-001",
+      "startTime": "2024-01-01T02:14:32Z",
+      "endTime": "2024-01-01T02:14:58Z",
+      "durationSec": 26.0,
+      "beatsInvolved": 28,
+      "deviationScore": 4.72,
+      "contextBucket": "sleep_night_2",
+      "dayIndex": 0,
+      "hourOfDay": 2.24,
+      "sleepState": "sleep"
+    },
+    {
+      "eventId": "evt-002",
+      "startTime": "2024-01-02T14:33:10Z",
+      "endTime": "2024-01-02T14:33:47Z",
+      "durationSec": 37.0,
+      "beatsInvolved": 44,
+      "deviationScore": 5.18,
+      "contextBucket": "awake_afternoon_14",
+      "dayIndex": 1,
+      "hourOfDay": 14.55,
+      "sleepState": "awake"
+    },
+    {
+      "eventId": "evt-003",
+      "startTime": "2024-01-03T23:07:01Z",
+      "endTime": "2024-01-03T23:07:22Z",
+      "durationSec": 21.0,
+      "beatsInvolved": 22,
+      "deviationScore": 3.94,
+      "contextBucket": "sleep_night_23",
+      "dayIndex": 2,
+      "hourOfDay": 23.12,
+      "sleepState": "sleep"
+    },
+    {
+      "eventId": "evt-004",
+      "startTime": "2024-01-05T08:22:45Z",
+      "endTime": "2024-01-05T08:23:15Z",
+      "durationSec": 30.0,
+      "beatsInvolved": 34,
+      "deviationScore": 6.03,
+      "contextBucket": "transition_morning_8",
+      "dayIndex": 4,
+      "hourOfDay": 8.38,
+      "sleepState": "transition"
+    },
+    {
+      "eventId": "evt-005",
+      "startTime": "2024-01-06T16:44:00Z",
+      "endTime": "2024-01-06T16:44:52Z",
+      "durationSec": 52.0,
+      "beatsInvolved": 61,
+      "deviationScore": 7.21,
+      "contextBucket": "awake_afternoon_16",
+      "dayIndex": 5,
+      "hourOfDay": 16.73,
+      "sleepState": "awake"
+    }
+  ],
+  "summaryStats": {
+    "totalEvents": 5,
+    "avgDeviationScore": 5.42,
+    "mostCommonContext": "sleep_night_2"
+  }
+}

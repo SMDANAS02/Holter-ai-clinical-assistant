@@ -18,13 +18,15 @@ import subprocess
 import tempfile
 import datetime
 import random
+import hashlib
 import requests
 from pathlib import Path
 from typing import Optional, Dict, Tuple, List
 from io import BytesIO
 
 from dotenv import load_dotenv
-load_dotenv()
+# Load environment variables from .env file
+load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
 import streamlit as st
 import psycopg2
@@ -55,6 +57,48 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+AUTH_USERS_FILE = Path(__file__).resolve().parent / "users.json"
+DEFAULT_AUTH_EMAIL = "smohamedanas02@gmail.com"
+DEFAULT_AUTH_PASSWORD = "anas1234"
+
+
+def _normalize_email(email: str) -> str:
+    """Normalize emails for consistent storage."""
+    return (email or "").strip().lower()
+
+
+def _hash_password(password: str) -> str:
+    """Hash passwords before storing them."""
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+def _load_auth_users() -> Dict[str, Dict]:
+    """Load persisted users from disk, creating the default account if absent."""
+    if AUTH_USERS_FILE.exists():
+        try:
+            with open(AUTH_USERS_FILE, "r", encoding="utf-8") as handle:
+                users = json.load(handle)
+                if isinstance(users, dict):
+                    return users
+        except Exception:
+            pass
+
+    default_users = {
+        _normalize_email(DEFAULT_AUTH_EMAIL): {
+            "user_id": "hardcoded-admin",
+            "email": _normalize_email(DEFAULT_AUTH_EMAIL),
+            "password_hash": _hash_password(DEFAULT_AUTH_PASSWORD),
+        }
+    }
+    _save_auth_users(default_users)
+    return default_users
+
+
+def _save_auth_users(users: Dict[str, Dict]) -> None:
+    """Persist users to disk."""
+    with open(AUTH_USERS_FILE, "w", encoding="utf-8") as handle:
+        json.dump(users, handle, indent=2)
+    
 
 # ════════════════════════════════════════════════════════════════════════════
 # PDF REPORT GENERATION
@@ -212,45 +256,53 @@ def generate_pdf_report(findings: Dict, events: List[Dict], stats: Dict, recordi
     return buffer
 
 # ════════════════════════════════════════════════════════════════════════════
-# AUTHENTICATION (NEW)
+# AUTHENTICATION
 # ════════════════════════════════════════════════════════════════════════════
 
-def authenticate_user(email: str, password: str, is_signup: bool = False) -> Tuple[bool, Optional[Dict]]:
-    """Authenticate with Supabase Auth API (REST)."""
-    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
-        return False, None
-    
-    try:
-        if is_signup:
-            endpoint = f"{SUPABASE_URL}/auth/v1/signup"
-            payload = {"email": email, "password": password}
-        else:
-            endpoint = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
-            payload = {"email": email, "password": password}
-        
-        headers = {"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"}
-        response = requests.post(endpoint, json=payload, headers=headers, timeout=10)
-        
-        if response.status_code in (200, 201):
-            data = response.json()
-            user_id = data.get("user", {}).get("id") or email.split("@")[0]
-            access_token = data.get("access_token", data.get("session", {}).get("access_token"))
-            return True, {"user_id": user_id, "email": email, "token": access_token}
-        else:
-            if is_signup and response.status_code == 422:
-                return True, {"user_id": email.split("@")[0], "email": email, "token": "demo_token"}
-            return False, None
-    except:
-        return False, None
+
+def authenticate_user(email: str, password: str, is_signup: bool = False) -> Tuple[bool, Optional[Dict], str]:
+    """Authenticate locally with a hardcoded account and persisted sign-up accounts."""
+    normalized_email = _normalize_email(email)
+    if not normalized_email or not password:
+        return False, None, "Please enter both email and password."
+
+    users = _load_auth_users()
+
+    if is_signup:
+        if normalized_email in users:
+            return False, None, "An account with that email already exists."
+
+        users[normalized_email] = {
+            "user_id": normalized_email.replace("@", "_").replace(".", "_"),
+            "email": normalized_email,
+            "password_hash": _hash_password(password),
+        }
+        _save_auth_users(users)
+        return True, users[normalized_email], "Account created successfully."
+
+    if normalized_email in users:
+        stored_user = users[normalized_email]
+        if stored_user.get("password_hash") == _hash_password(password):
+            return True, {
+                "user_id": stored_user.get("user_id", normalized_email),
+                "email": normalized_email,
+                "token": f"local-{normalized_email}",
+            }, "Login successful."
+
+    return False, None, "Invalid email or password."
+
 
 def check_user_session() -> Optional[Dict]:
     """Check if user is authenticated."""
     return st.session_state.get("user", None)
 
+
 def logout_user():
     """Logout user."""
     if "user" in st.session_state:
         del st.session_state["user"]
+    if "auth_message" in st.session_state:
+        del st.session_state["auth_message"]
     st.success("Logged out successfully")
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -330,6 +382,92 @@ def get_daily_summaries_for_recording(recording_id: int) -> List[Dict]:
         return []
     except:
         return []
+
+
+def load_sample_data_to_supabase() -> Tuple[bool, str]:
+    """Load sample data JSON into Supabase tables using the service key.
+
+    Returns (success, message).
+    """
+    try:
+        secret = os.getenv("SUPABASE_SECRET_KEY", "").strip()
+        url = os.getenv("SUPABASE_URL", "").strip()
+        if not secret or not url:
+            return False, "Supabase URL or SUPABASE_SECRET_KEY not configured in .env"
+
+        sample_path = Path("sample_data/holter_sample_report.json")
+        if not sample_path.exists():
+            return False, "Sample data file not found: sample_data/holter_sample_report.json"
+
+        sample = json.loads(sample_path.read_text(encoding='utf-8'))
+
+        headers = {
+            "apikey": secret,
+            "Authorization": f"Bearer {secret}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation"
+        }
+
+        # 1) Ensure patient exists
+        patient_id = sample.get("patientId") or f"sample_{random.randint(1000,9999)}"
+        patient_payload = {"patient_id": patient_id}
+        resp = requests.post(f"{url}/rest/v1/patients", json=patient_payload, headers=headers, timeout=10)
+        if resp.status_code not in (200, 201, 204):
+            # ignore conflict errors, but report others
+            if resp.status_code not in (409, 422):
+                return False, f"Failed to create patient: {resp.status_code} {resp.text[:200]}"
+
+        # 2) Create recording
+        recording_payload = {
+            "user_id": sample.get("userId"),
+            "patient_id": patient_id,
+            "recording_days": sample.get("recordingDays", 7),
+            "total_beats_processed": sample.get("totalBeatsProcessed", 0)
+        }
+        resp = requests.post(f"{url}/rest/v1/recordings", json=recording_payload, headers=headers, timeout=10)
+        if resp.status_code not in (200, 201):
+            return False, f"Failed to create recording: {resp.status_code} {resp.text[:200]}"
+        rec = resp.json()
+        # rec may be a list if multiple; handle both
+        if isinstance(rec, list) and len(rec) > 0:
+            recording_id = rec[0].get("recording_id")
+        elif isinstance(rec, dict):
+            recording_id = rec.get("recording_id")
+        else:
+            return False, "Unexpected response creating recording"
+
+        # 3) Insert events
+        events = sample.get("events", [])
+        if events:
+            # Transform events to DB column names
+            db_events = []
+            for e in events:
+                db_events.append({
+                    "event_id": e.get("eventId"),
+                    "recording_id": recording_id,
+                    "event_timestamp": e.get("startTime"),
+                    "start_time": e.get("startTime"),
+                    "end_time": e.get("endTime"),
+                    "duration_sec": e.get("durationSec", 0),
+                    "beats_involved": e.get("beatsInvolved", 0),
+                    "deviation_score": e.get("deviationScore", 0.0),
+                    "context_bucket": e.get("contextBucket"),
+                    "day_index": e.get("dayIndex", 0),
+                    "hour_of_day": e.get("hourOfDay", 0.0),
+                    "sleep_state": e.get("sleepState")
+                })
+
+            # Post in chunks to avoid huge payloads
+            chunk_size = 50
+            for i in range(0, len(db_events), chunk_size):
+                batch = db_events[i:i+chunk_size]
+                resp = requests.post(f"{url}/rest/v1/events", json=batch, headers=headers, timeout=15)
+                if resp.status_code not in (200, 201):
+                    return False, f"Failed to insert events: {resp.status_code} {resp.text[:200]}"
+
+        return True, "Sample data loaded into Supabase successfully"
+    except Exception as ex:
+        return False, f"Error loading sample data: {str(ex)[:300]}"
 
 # ════════════════════════════════════════════════════════════════════════════
 # PDF EXTRACTION (NEW)
@@ -512,9 +650,9 @@ def query_groq_direct(question: str) -> str:
     try:
         import requests
         
-        groq_key = os.getenv("GROQ_API_KEY", "")
+        groq_key = os.getenv("GROQ_API_KEY", "").strip()
         if not groq_key:
-            return "⚠️ GROQ_API_KEY not configured"
+            return "⚠️ GROQ_API_KEY not set in .env - configure it to enable AI analysis"
         
         headers = {
             "Authorization": f"Bearer {groq_key}",
@@ -547,47 +685,63 @@ def query_groq_direct(question: str) -> str:
         if response.status_code == 200:
             data = response.json()
             return data["choices"][0]["message"]["content"]
+        elif response.status_code == 401:
+            return "❌ Groq API key invalid - check GROQ_API_KEY in .env"
+        elif response.status_code == 429:
+            return "⚠️ Groq rate limited - try again in a moment"
         else:
-            return f"❌ Groq API error: {response.status_code}"
+            return f"❌ Groq API error {response.status_code}: {response.text[:100]}"
+    except requests.exceptions.Timeout:
+        return "❌ Groq API timeout - request took too long"
     except Exception as e:
         return f"❌ Error: {str(e)[:150]}"
 
 def query_holter_agent(question: str, findings: Dict, external_report: Optional[Dict] = None) -> str:
     """Query HolterAgent via CLI with full classpath including dependencies."""
     try:
-        # Read classpath from file
-        classpath_file = Path("classpath.txt")
-        if classpath_file.exists():
-            classpath = classpath_file.read_text().strip()
-        else:
-            # Fallback: use extracted JAR directory
-            classpath = "target/jar-extracted"
-        
-        # Get Groq API key from environment
+        # Attempt to find a runnable JAR or classpath under common build directories
         groq_key = os.getenv("GROQ_API_KEY", "")
-        
-        # Use findings.json file path instead of stdin
         findings_path = "findings.json"
-        
-        # Write findings to file temporarily for Java agent to read
         with open(findings_path, 'w', encoding='utf-8') as f:
             json.dump(findings, f, indent=2)
-        
-        cmd = ["java", "-cp", classpath, "holter.agent.HolterAgentCLI",
-               "--findings", findings_path,
-               "--question", question]
-        
-        # Add Groq key if available
+
+        search_paths = [Path("backend/target"), Path("target"), Path("backend/target/fat-build"), Path("backend/target/final-build")]
+        jars = []
+        for sp in search_paths:
+            if sp.exists():
+                jars.extend([str(p) for p in sp.glob('**/*.jar') if p.is_file()])
+
+        if jars:
+            # Join jars into a single classpath string
+            classpath = os.pathsep.join(jars)
+            cmd = ["java", "-cp", classpath, "holter.agent.HolterAgentCLI", "--findings", findings_path, "--question", question]
+        else:
+            # Try a common shaded JAR path
+            shaded = Path("backend/target/holter-monitor-ai-pipeline-1.0-SNAPSHOT-shaded.jar")
+            plain = Path("backend/target/holter-monitor-ai-pipeline-1.0-SNAPSHOT.jar")
+            if shaded.exists():
+                cmd = ["java", "-cp", str(shaded), "holter.agent.HolterAgentCLI", "--findings", findings_path, "--question", question]
+            elif plain.exists():
+                cmd = ["java", "-cp", str(plain), "holter.agent.HolterAgentCLI", "--findings", findings_path, "--question", question]
+            else:
+                return ("❌ Agent jar/class not found. Build the backend jar first: `mvn -f backend/pom.xml -DskipTests package`\n"
+                        "Searched locations: backend/target, target and their subfolders.\n"
+                        "Once built place the shaded JAR in backend/target and retry.")
+
+        # Attach Groq key if available
         if groq_key:
             cmd.extend(["--groq-key", groq_key, "--provider", "groq"])
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         if result.returncode == 0:
             return result.stdout.strip()
         else:
-            error_msg = result.stderr.strip() if result.stderr else result.stdout.strip()
-            return f"❌ Agent error: {error_msg[:200]}"
+            err = (result.stderr or result.stdout or "").strip()
+            # Detect common Java errors and return actionable advice
+            if "ClassNotFoundException" in err or "Could not find or load main class" in err:
+                return (f"❌ Agent runtime error: Java class not found.\n{err[:300]}\n"
+                        "Ensure the agent class `holter.agent.HolterAgentCLI` is present in the built JAR and the classpath includes it.")
+            return f"❌ Agent error: {err[:400]}"
     except subprocess.TimeoutExpired:
         return "❌ Query timed out (>30s)"
     except Exception as e:
@@ -616,13 +770,8 @@ if not user:
     st.markdown("---")
     
     st.markdown("### 🎯 Quick Start")
-    col_demo = st.columns([1, 2])
-    with col_demo[0]:
-        if st.button("📱 Demo Login", use_container_width=True):
-            st.session_state.user = {"user_id": "demo_user", "email": "demo@example.com", "token": "demo_token"}
-            st.rerun()
-    with col_demo[1]:
-        st.caption("Explore the dashboard immediately")
+    st.caption("Use the hardcoded demo account or create your own account below.")
+    st.info("Default login: smohamedanas02@gmail.com / anas1234")
     
     st.markdown("---")
     st.markdown("### 🔐 Create Account or Login")
@@ -633,20 +782,26 @@ if not user:
         email = st.text_input("Email", key="login_email")
         password = st.text_input("Password", type="password", key="login_pwd")
         if st.button("Login", key="login_btn", use_container_width=True):
-            success, user_data = authenticate_user(email, password)
-            if success:
+            success, user_data, message = authenticate_user(email, password)
+            if success and user_data:
                 st.session_state.user = user_data
+                st.session_state.auth_message = message
                 st.rerun()
+            else:
+                st.error(message)
     
     with col2:
         st.subheader("📝 Sign Up")
         email_su = st.text_input("Email", key="signup_email")
         password_su = st.text_input("Password", type="password", key="signup_pwd")
         if st.button("Sign Up", key="signup_btn", use_container_width=True):
-            success, user_data = authenticate_user(email_su, password_su, is_signup=True)
-            if success:
+            success, user_data, message = authenticate_user(email_su, password_su, is_signup=True)
+            if success and user_data:
                 st.session_state.user = user_data
+                st.session_state.auth_message = message
                 st.rerun()
+            else:
+                st.error(message)
     
     st.stop()
 
@@ -654,11 +809,22 @@ if not user:
 # MAIN DASHBOARD
 # ════════════════════════════════════════════════════════════════════════════
 
-user_id = user.get("user_id")
-user_email = user.get("email")
+user_id = user.get("user_id") if user else "demo"
+user_email = user.get("email") if user else "Guest"
 
 st.markdown(f"# ❤️ Holter Monitor AI Dashboard")
 st.markdown(f"**User:** {user_email}")
+
+findings = {
+    "patientId": f"USER_{user_id[:8] if user_id else 'demo'}",
+    "recordingDays": 7,
+    "totalBeatsProcessed": 714240,
+    "events": [],
+    "summaryStats": {"totalEvents": 0, "avgDeviationScore": 0.0, "mostCommonContext": "N/A"},
+}
+events = findings.get("events", [])
+stats = findings.get("summaryStats", {})
+recording_days = findings.get("recordingDays", 1)
 
 with st.sidebar:
     if st.button("🚪 Logout", use_container_width=True):
@@ -871,27 +1037,33 @@ if user_q:
         st.markdown(user_q)
     
     with st.chat_message("assistant"):
-        # Check if user is asking about sample/demo data
-        question_lower = user_q.lower()
-        use_sample = any(word in question_lower for word in ["sample", "demo", "example", "test", "data", "check"])
-        
-        # Determine which findings to use
-        if use_sample or not events:
+        with st.spinner("Thinking..."):
+            # Check if user is asking about sample/demo data
+            question_lower = user_q.lower()
+            use_sample = any(word in question_lower for word in ["sample", "demo", "example", "test", "data", "check"])
+            
+            # Always use sample data for now (backend might not be ready)
+            # This ensures AI responds even without Java backend
             sample_findings = load_sample_findings()
             
-            # Display sample data summary
-            st.info(f"""
+            # Display sample data summary only for longer questions
+            if len(user_q.split()) > 2:
+                st.info(f"""
 📊 **Analyzing Sample Data**
 - **Patient:** {sample_findings['patientId']}
 - **Recording Duration:** {sample_findings['recordingDays']} days
 - **Total Beats:** {sample_findings['totalBeatsProcessed']:,}
 - **Events Found:** {len(sample_findings['events'])}
 - **Avg Deviation Score:** {sample_findings['summaryStats']['avgDeviationScore']:.2f}
-            """)
+                """)
             
             # Use Groq to analyze sample data directly
             groq_prompt = f"""
-You are a clinical Holter monitor analyzer. Analyze this patient data and provide insights:
+You are a friendly clinical Holter monitor analyzer AI. The user is asking: "{user_q}"
+
+If this is a greeting (hi, hello, etc.), respond warmly and offer to help analyze Holter monitor data.
+
+If they're asking about Holter analysis, provide clinical insights:
 
 **Patient Information:**
 - Patient ID: {sample_findings['patientId']}
@@ -906,19 +1078,10 @@ You are a clinical Holter monitor analyzer. Analyze this patient data and provid
 **Event Details:**
 {json.dumps(sample_findings['events'][:5], indent=2)}
 
-**User Question:** {user_q}
-
-Please provide a clinical analysis including:
-1. Summary of the detected anomalies
-2. Pattern analysis (sleep vs awake events)
-3. Deviation score interpretation
-4. Clinical recommendations
+Keep responses concise and friendly. Always end with an offer to help analyze specific metrics if appropriate.
 """
             
             response = query_groq_direct(groq_prompt)
-        else:
-            # Use Java agent for actual data
-            response = query_holter_agent(user_q, findings, external_report)
         
         st.markdown(response)
         st.session_state.chat_history.append({"role": "assistant", "content": response})
@@ -992,19 +1155,16 @@ with tab_recordings:
     else:
         st.info("No recordings found. Upload data or use sample data to get started.")
         
-        # Show option to load sample data
+        # Show option to load sample data directly into Supabase
         if st.button("📥 Load Sample Supabase Data", use_container_width=True, key="load_sample_db"):
-            st.info("""
-            To load sample data into your Supabase database:
-            
-            1. Go to your Supabase SQL Editor: https://supabase.com/dashboard/project/[PROJECT_ID]/sql
-            2. Create a new query
-            3. Copy and paste the contents of `supabase_seed_queries.sql`
-            4. Click "Run" to execute
-            5. Return to this dashboard and refresh
-            
-            The sample data includes 3 patients, 3 recordings, 64 events, and 21 daily summaries.
-            """)
+            with st.spinner("Loading sample data into Supabase..."):
+                ok, message = load_sample_data_to_supabase()
+                if ok:
+                    st.success(message)
+                    # Refresh the page so the new recordings appear
+                    st.experimental_rerun()
+                else:
+                    st.error(message)
 
 with tab_faq:
     st.markdown("### ❓ Frequently Asked Questions")
