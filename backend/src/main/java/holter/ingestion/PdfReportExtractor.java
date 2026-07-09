@@ -9,7 +9,6 @@ import org.apache.pdfbox.text.PDFTextStripper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -127,7 +126,7 @@ public class PdfReportExtractor {
     }
 
     private static String extractText(Path pdfPath) throws IOException {
-        try (PDDocument document = PDDocument.load(pdfPath.toFile())) {
+        try (PDDocument document = PDDocument.load(pdfPath)) {
             PDFTextStripper stripper = new PDFTextStripper();
             return stripper.getText(document);
         }
@@ -156,11 +155,10 @@ public class PdfReportExtractor {
     }
 
     private static void writeJson(ExternalReportSummary summary, Path outputPath) throws IOException {
-        File outputFile = outputPath.toFile();
         ObjectMapper mapper = new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .enable(SerializationFeature.INDENT_OUTPUT);
-        mapper.writeValue(outputFile, summary);
+        mapper.writeValue(outputPath.toFile(), summary);
     }
 
     private static String toJson(ExternalReportSummary summary) throws IOException {
