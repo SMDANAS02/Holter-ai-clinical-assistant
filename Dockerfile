@@ -33,14 +33,11 @@ COPY dashboard/ ./dashboard/
 COPY --from=java-builder /app/backend/target/holter-monitor-ai-pipeline-1.0-SNAPSHOT.jar ./backend/
 COPY --from=java-builder /app/backend/target/holter-monitor-ai-pipeline-1.0-SNAPSHOT-shaded.jar ./backend/
 
-# Copy classpath configuration
-COPY classpath.txt .
-
 # Copy sample data
 COPY sample_data/ ./sample_data/
 
-# Copy findings.json (default data)
-COPY findings.json .
+# Copy environment template
+COPY .env.example .
 
 # Expose Streamlit port
 EXPOSE 8501
