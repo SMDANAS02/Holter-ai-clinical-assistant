@@ -1,4 +1,4 @@
-﻿# Holter Monitor Student Project
+﻿# Holter Monitor  Project
 
 This repository contains a student-built Holter monitor analysis pipeline and a Streamlit dashboard for visualising flagged cardiac events. It is intended for research and educational use only.
 
