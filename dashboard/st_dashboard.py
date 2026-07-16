@@ -645,15 +645,36 @@ def load_sample_findings() -> Dict:
         }
     }
 
+def demo_response(question: str) -> str:
+    """Demo fallback response when API key not configured."""
+    q = question.lower()
+    
+    responses = {
+        "hi": "👋 Hello! I'm your Holter monitor AI assistant. I can help you analyze ECG data, explain findings, and answer questions about cardiac anomalies. How can I assist you today?",
+        "hello": "👋 Hello! Welcome to the Holter Monitor AI Dashboard. What would you like to know about your cardiac data?",
+        "how are you": "I'm working great! Ready to analyze your Holter monitor data. What would you like to know?",
+        "event": "📊 I can help you understand cardiac events detected in your Holter recording. Events are detected anomalies like irregular heartbeats, pauses, or other deviations from baseline.",
+        "anomaly": "🔍 Anomalies are deviations from normal heart rhythm patterns. Each is scored by severity. Higher scores indicate more significant deviations.",
+        "baseline": "📈 A baseline is your personal normal heart rhythm pattern, calculated from your recording data over time.",
+        "afib": "⚕️ Atrial fibrillation (AFib) is an irregular heart rhythm. The Holter monitor can detect AFib episodes during the recording period.",
+    }
+    
+    for key, value in responses.items():
+        if key in q:
+            return value
+    
+    return "💡 I'm in demo mode (no API key configured). Ask about: events, anomalies, baseline, AFib, or type a greeting!"
+
 def query_groq_direct(question: str) -> str:
     """Query Groq API directly for conversational responses."""
     try:
         import requests
         
         groq_key = os.getenv("GROQ_API_KEY", "").strip()
-        if not groq_key:
-            st.warning("⚠️ GROQ_API_KEY environment variable not found")
-            return "⚠️ GROQ_API_KEY not configured. Add it to Render environment variables: Settings → Environment → GROQ_API_KEY"
+        
+        # Fallback to demo mode if key is missing or placeholder
+        if not groq_key or groq_key == "your-groq-api-key-here":
+            return demo_response(question)
         
         headers = {
             "Authorization": f"Bearer {groq_key}",
@@ -688,13 +709,14 @@ def query_groq_direct(question: str) -> str:
             return data["choices"][0]["message"]["content"]
         elif response.status_code == 401:
             st.error("❌ Groq API key invalid or expired")
-            return "❌ Groq API key is invalid or expired. Regenerate it at https://console.groq.com and update GROQ_API_KEY in Render settings."
+            st.info("Get new key: https://console.groq.com → Copy key → Add to Render Settings")
+            return None
         elif response.status_code == 429:
-            return "⚠️ Groq rate limited - try again in a moment"
+            st.warning("⚠️ Groq rate limited - try again in a moment")
+            return "⚠️ Rate limited - please try again shortly"
         else:
-            error_msg = f"Groq API error {response.status_code}"
-            st.error(f"❌ {error_msg}")
-            return f"❌ {error_msg}: {response.text[:200]}"
+            st.error(f"❌ Groq API error {response.status_code}")
+            return f"❌ API error {response.status_code}: {response.text[:200]}"
     except requests.exceptions.Timeout:
         st.error("❌ Groq API timeout - taking too long")
         return "❌ Groq API timeout - request took too long (30s). Check network on Render."
@@ -703,7 +725,7 @@ def query_groq_direct(question: str) -> str:
         return f"❌ Cannot reach Groq API: {str(e)[:150]}"
     except Exception as e:
         st.error(f"❌ AI Error: {str(e)[:100]}")
-        return f"❌ Error: {str(e)[:150]}"
+        return None
 
 def query_holter_agent(question: str, findings: Dict, external_report: Optional[Dict] = None) -> str:
     """Query HolterAgent via CLI with full classpath including dependencies."""
@@ -760,13 +782,205 @@ def query_holter_agent(question: str, findings: Dict, external_report: Optional[
 # PAGE SETUP
 # ════════════════════════════════════════════════════════════════════════════
 
-st.set_page_config(page_title="Holter AI", page_icon="❤️", layout="wide")
+st.set_page_config(
+    page_title="Holter Monitor AI - Clinical Dashboard",
+    page_icon="🫀",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-st.markdown("""<style>
-.stApp { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); }
-.section-header { color: #a78bfa; font-size: 1.1rem; font-weight: 700; border-left: 4px solid #7c3aed; padding-left: 0.6rem; }
-.event-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(167,139,250,0.3); border-radius: 12px; padding: 1rem; }
-</style>""", unsafe_allow_html=True)
+# Modern professional medical theme CSS - Tailwind-inspired
+st.markdown("""
+<style>
+/* Override Streamlit defaults for cleaner look */
+.stApp {
+    background-color: #f8fafc;
+    color: #1e293b;
+}
+
+/* Remove Streamlit's default padding */
+.main .block-container {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    max-width: 1400px;
+}
+
+/* Typography */
+h1, h2, h3 {
+    color: #0f172a;
+    font-weight: 600;
+    margin: 0;
+}
+
+/* Sidebar styling */
+.css-1d391kg {
+    background-color: #ffffff;
+    border-right: 1px solid #e2e8f0;
+    padding: 1rem;
+}
+
+/* Card styling */
+.metric-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Button styling - Tailwind-like */
+.stButton > button {
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+    height: auto;
+    min-height: 2.25rem;
+    white-space: nowrap;
+}
+
+.stButton > button:hover {
+    background-color: #2563eb;
+}
+
+/* Input styling - Tailwind-like */
+.stTextInput > div > div > input,
+.stSelectbox > div > div > select,
+.stNumberInput > div > div > input {
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    color: #1e293b;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    height: 2.25rem;
+    min-height: 2.25rem;
+}
+
+.stTextInput > div > div > input:focus,
+.stSelectbox > div > div > select:focus,
+.stNumberInput > div > div > input:focus {
+    border-color: #3b82f6;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* File uploader styling */
+.stFileUploader {
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 1rem;
+}
+
+/* Chat message styling */
+.stChatMessage {
+    background: white;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin: 0.5rem 0;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Section headers */
+.section-header {
+    color: #0f172a;
+    font-size: 1.125rem;
+    font-weight: 600;
+    padding: 0.5rem 0;
+    border-bottom: 2px solid #3b82f6;
+    margin-bottom: 1rem;
+}
+
+/* Event cards */
+.event-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #3b82f6;
+    border-radius: 6px;
+    padding: 1rem;
+    margin: 0.5rem 0;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Status indicators */
+.status-success {
+    color: #059669;
+    background: #d1fae5;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    display: inline-block;
+}
+
+.status-error {
+    color: #dc2626;
+    background: #fee2e2;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    display: inline-block;
+}
+
+.status-warning {
+    color: #d97706;
+    background: #fef3c7;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    display: inline-block;
+}
+
+/* Tab styling */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 0.5rem;
+}
+
+.stTabs [data-baseweb="tab"] {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+/* Expander styling */
+.streamlit-expanderHeader {
+    padding: 0.5rem 0;
+    font-weight: 500;
+    font-size: 0.875rem;
+}
+
+/* Remove default margins */
+div[data-testid="stVerticalBlock"] > div {
+    gap: 0.5rem;
+}
+
+/* Column spacing */
+div[data-testid="column"] {
+    padding: 0 0.5rem;
+}
+
+/* Chat input styling */
+.stChatInput {
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+}
+
+/* Metric styling */
+.stMetric {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════════════════════
 # AUTHENTICATION GATE
@@ -775,35 +989,53 @@ st.markdown("""<style>
 user = check_user_session()
 
 if not user:
-    st.title("❤️ Holter Monitor AI")
-    st.markdown("---")
+    # Compact authentication page with centered layout
+    st.markdown("""
+    <div style='text-align: center; padding: 2rem 0 1.5rem 0;'>
+        <h1 style='color: #0f172a; margin: 0; font-size: 2rem; font-weight: 700;'>🫀 Holter Monitor AI</h1>
+        <p style='color: #64748b; margin: 0.5rem 0 0 0; font-size: 0.875rem;'>Clinical Dashboard for Cardiac Monitoring Analysis</p>
+    </div>
+    """, unsafe_allow_html=True)
     
-    st.markdown("### 🎯 Quick Start")
-    st.caption("Use the hardcoded demo account or create your own account below.")
-    st.info("Default login: smohamedanas02@gmail.com / anas1234")
+    # Tab-based authentication
+    tab_login, tab_signup = st.tabs(["Sign In", "Create Account"])
     
-    st.markdown("---")
-    st.markdown("### 🔐 Create Account or Login")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("🔐 Login")
-        email = st.text_input("Email", key="login_email")
-        password = st.text_input("Password", type="password", key="login_pwd")
-        if st.button("Login", key="login_btn", use_container_width=True):
-            success, user_data, message = authenticate_user(email, password)
-            if success and user_data:
-                st.session_state.user = user_data
-                st.session_state.auth_message = message
+    with tab_login:
+        st.markdown("### Sign In")
+        
+        col_email, col_password = st.columns(2)
+        with col_email:
+            email = st.text_input("Email", placeholder="your@email.com", key="login_email", label_visibility="collapsed")
+        with col_password:
+            password = st.text_input("Password", type="password", placeholder="••••••••", key="login_pwd", label_visibility="collapsed")
+        
+        col_btn, col_demo = st.columns([3, 1])
+        with col_btn:
+            if st.button("Sign In", key="login_btn", use_container_width=True):
+                success, user_data, message = authenticate_user(email, password)
+                if success and user_data:
+                    st.session_state.user = user_data
+                    st.session_state.auth_message = message
+                    st.rerun()
+                else:
+                    st.error(message)
+        with col_demo:
+            if st.button("Demo", key="demo_btn", use_container_width=True):
+                st.session_state.user = {"user_id": "demo_user", "email": "demo@example.com", "token": "demo_token"}
                 st.rerun()
-            else:
-                st.error(message)
+        
+        st.caption("Demo: smohamedanas02@gmail.com / anas1234")
     
-    with col2:
-        st.subheader("📝 Sign Up")
-        email_su = st.text_input("Email", key="signup_email")
-        password_su = st.text_input("Password", type="password", key="signup_pwd")
-        if st.button("Sign Up", key="signup_btn", use_container_width=True):
+    with tab_signup:
+        st.markdown("### Create Account")
+        
+        col_email_su, col_password_su = st.columns(2)
+        with col_email_su:
+            email_su = st.text_input("Email", placeholder="your@email.com", key="signup_email", label_visibility="collapsed")
+        with col_password_su:
+            password_su = st.text_input("Password", type="password", placeholder="••••••••", key="signup_pwd", label_visibility="collapsed")
+        
+        if st.button("Create Account", key="signup_btn", use_container_width=True):
             success, user_data, message = authenticate_user(email_su, password_su, is_signup=True)
             if success and user_data:
                 st.session_state.user = user_data
@@ -821,17 +1053,29 @@ if not user:
 user_id = user.get("user_id") if user else "demo"
 user_email = user.get("email") if user else "Guest"
 
-st.markdown(f"# ❤️ Holter Monitor AI Dashboard")
-st.markdown(f"**User:** {user_email}")
+# Compact header
+col_header_left, col_header_right = st.columns([4, 1])
+with col_header_left:
+    st.markdown(f"""
+    <div style='padding: 0.5rem 0;'>
+        <h1 style='color: #0f172a; margin: 0; font-size: 1.5rem; font-weight: 700;'>🫀 Holter Monitor AI</h1>
+    </div>
+    """, unsafe_allow_html=True)
 
-# Show AI connection status
-col1, col2 = st.columns([3, 1])
-with col2:
+with col_header_right:
     groq_key = os.getenv("GROQ_API_KEY", "").strip()
     if groq_key:
-        st.success("✅ Groq AI Ready")
+        st.markdown("""
+        <div class='status-success' style='text-align: center;'>
+            ✅ AI Connected
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        st.error("❌ AI Not Configured")
+        st.markdown("""
+        <div class='status-warning' style='text-align: center;'>
+            ⚠️ AI Not Configured
+        </div>
+        """, unsafe_allow_html=True)
 
 findings = {
     "patientId": f"USER_{user_id[:8] if user_id else 'demo'}",
@@ -845,264 +1089,344 @@ stats = findings.get("summaryStats", {})
 recording_days = findings.get("recordingDays", 1)
 
 with st.sidebar:
-    if st.button("🚪 Logout", use_container_width=True):
+    # Compact user profile
+    st.markdown(f"""
+    <div style='background: #f1f5f9; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem;'>
+        <div style='font-weight: 600; color: #0f172a; font-size: 0.875rem;'>{user_email}</div>
+        <small style='color: #64748b; font-size: 0.75rem;'>{user_id}</small>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("Logout", use_container_width=True):
         logout_user()
         st.rerun()
+    
     st.markdown("---")
     
-    # Export PDF Report
-    st.markdown("### 📄 Export Report")
-    if st.button("📥 Export PDF Report", use_container_width=True):
-        if HAS_REPORTLAB:
-            with st.spinner("Generating PDF report..."):
-                chat_history = st.session_state.get("chat_history", [])
-                pdf_buffer = generate_pdf_report(findings, events, stats, recording_days, chat_history)
+    # Pipeline Settings
+    with st.expander("Pipeline Settings", expanded=True):
+        col_days, col_thresh = st.columns(2)
+        with col_days:
+            synth_days = st.number_input("Days", min_value=1, max_value=30, value=7, key="sidebar_synth_days", label_visibility="collapsed")
+        with col_thresh:
+            synth_threshold = st.number_input("Threshold", min_value=1.0, max_value=10.0, value=3.0, step=0.5, key="sidebar_threshold", label_visibility="collapsed")
+        
+        if st.button("Generate Data", use_container_width=True, key="sidebar_run_synth"):
+            with st.spinner("Generating..."):
+                import random
+                num_events = random.randint(3, 8)
+                new_events = []
+                for i in range(num_events):
+                    day_idx = random.randint(0, synth_days - 1)
+                    hour = random.uniform(0, 24)
+                    state = random.choice(["sleep", "awake", "transition"])
+                    score = random.uniform(synth_threshold, synth_threshold + 5)
+                    new_events.append({
+                        "eventId": f"evt-{i+1:03d}",
+                        "startTime": f"2024-01-{day_idx+1:02d}T{int(hour):02d}:{int((hour%1)*60):02d}Z",
+                        "endTime": f"2024-01-{day_idx+1:02d}T{int(hour):02d}:{int((hour%1)*60)+30:02d}Z",
+                        "durationSec": random.uniform(15, 60),
+                        "beatsInvolved": random.randint(20, 70),
+                        "deviationScore": score,
+                        "contextBucket": f"{state}_{random.choice(['morning', 'afternoon', 'night'])}",
+                        "dayIndex": day_idx,
+                        "hourOfDay": hour,
+                        "sleepState": state
+                    })
                 
-                if pdf_buffer:
-                    patient_id = findings.get("patientId", "patient").replace("/", "_")
-                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"holter_report_{patient_id}_{timestamp}.pdf"
+                findings = {
+                    "patientId": f"USER_{user_id[:8] if user_id else 'demo'}",
+                    "recordingDays": synth_days,
+                    "totalBeatsProcessed": synth_days * 102060,
+                    "events": new_events,
+                    "summaryStats": {
+                        "totalEvents": len(new_events),
+                        "avgDeviationScore": sum(e["deviationScore"] for e in new_events) / len(new_events),
+                        "mostCommonContext": max(set(e["contextBucket"] for e in new_events), key=lambda x: [e["contextBucket"] for e in new_events].count(x))
+                    },
+                    "externalReportSummary": external_report
+                }
+                events = findings.get("events", [])
+                stats = findings.get("summaryStats", {})
+                recording_days = findings.get("recordingDays", 1)
+                st.success(f"✅ {len(new_events)} events")
+                st.rerun()
+    
+    # Export Report
+    with st.expander("Export Report", expanded=False):
+        if st.button("Download PDF", use_container_width=True):
+            if HAS_REPORTLAB:
+                with st.spinner("Generating..."):
+                    chat_history = st.session_state.get("chat_history", [])
+                    pdf_buffer = generate_pdf_report(findings, events, stats, recording_days, chat_history)
                     
-                    st.download_button(
-                        label="⬇️ Download PDF",
-                        data=pdf_buffer,
-                        file_name=filename,
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
-                    st.success("PDF generated successfully!")
-                else:
-                    st.error("Failed to generate PDF")
+                    if pdf_buffer:
+                        patient_id = findings.get("patientId", "patient").replace("/", "_")
+                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = f"holter_report_{patient_id}_{timestamp}.pdf"
+                        
+                        st.download_button(
+                            label="Download",
+                            data=pdf_buffer,
+                            file_name=filename,
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
+                        st.success("PDF generated!")
+                    else:
+                        st.error("Failed to generate PDF")
+            else:
+                st.error("PDF library not available")
+    
+    # Data Input
+    with st.expander("Data Input", expanded=False):
+        pdf_file = st.file_uploader("Upload PDF", type=["pdf"], label_visibility="collapsed")
+        external_report = None
+        
+        if pdf_file:
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp.write(pdf_file.getbuffer())
+                tmp_path = tmp.name
+            external_report = extract_pdf_report(tmp_path)
+            if external_report:
+                with st.expander("Extracted Data", expanded=False):
+                    st.json(external_report)
+            Path(tmp_path).unlink()
+        
+        sample_data_path = Path("sample_data/holter_sample_report.json")
+        if sample_data_path.exists():
+            with st.expander("Sample Data", expanded=False):
+                sample_data = json.loads(sample_data_path.read_text())
+                st.json(sample_data)
+                
+                def load_sample_data():
+                    st.session_state["use_sample"] = True
+                
+                st.button(
+                    "Load Sample",
+                    use_container_width=True,
+                    key="btn_use_sample",
+                    on_click=load_sample_data
+                )
+                
+                if st.session_state.get("use_sample", False):
+                    st.info("✅ Sample loaded!")
         else:
-            st.error("PDF generation library not available")
+            st.warning("Sample not available")
     
-    st.markdown("---")
-    st.markdown("### 📁 Input Data")
-    
-    # Sample Data Section
-    st.markdown("#### 📊 Sample Data")
-    sample_data_path = Path("sample_data/holter_sample_report.json")
-    if sample_data_path.exists():
-        with st.expander("📋 View Sample Report", expanded=False):
-            sample_data = json.loads(sample_data_path.read_text())
-            st.json(sample_data)
-            
-            # Callback to set session state
-            def load_sample_data():
-                st.session_state["use_sample"] = True
-            
-            # Button with callback (not direct session_state assignment)
-            st.button(
-                "📥 Use Sample Data",
-                use_container_width=True,
-                key="btn_use_sample",
-                on_click=load_sample_data
-            )
-            
-            if st.session_state.get("use_sample", False):
-                st.info("✅ Sample data loaded!")
-    else:
-        st.warning("Sample data not available")
-    
-    st.markdown("---")
-    
-    # PDF Upload
-    pdf_file = st.file_uploader("Upload PDF Report", type=["pdf"])
-    external_report = None
-    
-    if pdf_file:
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            tmp.write(pdf_file.getbuffer())
-            tmp_path = tmp.name
-        external_report = extract_pdf_report(tmp_path)
-        if external_report:
-            with st.expander("📄 Extracted PDF Data"):
-                st.json(external_report)
-        Path(tmp_path).unlink()
-    
-    st.markdown("---")
-    st.markdown("### 📊 My Recordings")
-    recs = get_previous_recordings(user_id)
-    if recs:
-        st.write(f"You have {len(recs)} recording(s)")
-    else:
-        st.info("No recordings yet")
+    # Recordings
+    with st.expander("Recordings", expanded=False):
+        recs = get_previous_recordings(user_id)
+        if recs:
+            st.write(f"**{len(recs)} recording(s)**")
+            for rec in recs[:5]:
+                st.text(f"• {rec.get('created_at', 'N/A')}")
+        else:
+            st.info("No recordings")
 
 st.markdown("---")
 
-# Load mock findings (your original data)
-mock_findings = {
-    "patientId": "USER_" + user_id[:8],
-    "recordingDays": 7,
-    "totalBeatsProcessed": 714240,
-    "events": [
-        {"eventId": "evt-001", "startTime": "2024-01-01T02:14:32Z", "endTime": "2024-01-01T02:14:58Z", "durationSec": 26.0, "beatsInvolved": 28, "deviationScore": 4.72, "contextBucket": "sleep_night_2", "dayIndex": 0, "hourOfDay": 2.24, "sleepState": "sleep"},
-        {"eventId": "evt-002", "startTime": "2024-01-02T14:33:10Z", "endTime": "2024-01-02T14:33:47Z", "durationSec": 37.0, "beatsInvolved": 44, "deviationScore": 5.18, "contextBucket": "awake_afternoon_14", "dayIndex": 1, "hourOfDay": 14.55, "sleepState": "awake"},
-        {"eventId": "evt-003", "startTime": "2024-01-03T23:07:01Z", "endTime": "2024-01-03T23:07:22Z", "durationSec": 21.0, "beatsInvolved": 22, "deviationScore": 3.94, "contextBucket": "sleep_night_23", "dayIndex": 2, "hourOfDay": 23.12, "sleepState": "sleep"},
-        {"eventId": "evt-004", "startTime": "2024-01-05T08:22:45Z", "endTime": "2024-01-05T08:23:15Z", "durationSec": 30.0, "beatsInvolved": 34, "deviationScore": 6.03, "contextBucket": "transition_morning_8", "dayIndex": 4, "hourOfDay": 8.38, "sleepState": "transition"},
-        {"eventId": "evt-005", "startTime": "2024-01-06T16:44:00Z", "endTime": "2024-01-06T16:44:52Z", "durationSec": 52.0, "beatsInvolved": 61, "deviationScore": 7.21, "contextBucket": "awake_afternoon_16", "dayIndex": 5, "hourOfDay": 16.73, "sleepState": "awake"},
-    ],
-    "summaryStats": {"totalEvents": 5, "avgDeviationScore": 5.42, "mostCommonContext": "sleep_night_2"},
-    "externalReportSummary": external_report
-}
+# Summary Metrics
+st.markdown('<div class="section-header">Summary Metrics</div>', unsafe_allow_html=True)
 
-findings = mock_findings
-events = findings.get("events", [])
-stats = findings.get("summaryStats", {})
-recording_days = findings.get("recordingDays", 1)
-
-st.markdown("---")
-st.markdown('<div class="section-header">🔬 Synthetic Pipeline</div>', unsafe_allow_html=True)
-
-col1, col2, col3 = st.columns([1, 1, 2])
-with col1:
-    synth_days = st.number_input("Recording Days", min_value=1, max_value=30, value=7, key="synth_days")
-with col2:
-    synth_threshold = st.number_input("Anomaly Threshold", min_value=1.0, max_value=10.0, value=3.0, step=0.5, key="synth_threshold")
-with col3:
-    if st.button("🚀 Run Synthetic Pipeline", use_container_width=True, key="run_synth"):
-        with st.spinner("Generating synthetic Holter data..."):
-            import random
-            num_events = random.randint(3, 8)
-            new_events = []
-            for i in range(num_events):
-                day_idx = random.randint(0, synth_days - 1)
-                hour = random.uniform(0, 24)
-                state = random.choice(["sleep", "awake", "transition"])
-                score = random.uniform(synth_threshold, synth_threshold + 5)
-                new_events.append({
-                    "eventId": f"evt-{i+1:03d}",
-                    "startTime": f"2024-01-{day_idx+1:02d}T{int(hour):02d}:{int((hour%1)*60):02d}Z",
-                    "endTime": f"2024-01-{day_idx+1:02d}T{int(hour):02d}:{int((hour%1)*60)+30:02d}Z",
-                    "durationSec": random.uniform(15, 60),
-                    "beatsInvolved": random.randint(20, 70),
-                    "deviationScore": score,
-                    "contextBucket": f"{state}_{random.choice(['morning', 'afternoon', 'night'])}",
-                    "dayIndex": day_idx,
-                    "hourOfDay": hour,
-                    "sleepState": state
-                })
-            
-            findings = {
-                "patientId": "DEMO_PATIENT",
-                "recordingDays": synth_days,
-                "totalBeatsProcessed": synth_days * 102060,
-                "events": new_events,
-                "summaryStats": {
-                    "totalEvents": len(new_events),
-                    "avgDeviationScore": sum(e["deviationScore"] for e in new_events) / len(new_events),
-                    "mostCommonContext": max(set(e["contextBucket"] for e in new_events), key=lambda x: [e["contextBucket"] for e in new_events].count(x))
-                },
-                "externalReportSummary": external_report
-            }
-            events = findings.get("events", [])
-            stats = findings.get("summaryStats", {})
-            recording_days = findings.get("recordingDays", 1)
-            st.success(f"✅ Generated {len(new_events)} synthetic events over {synth_days} days")
-            st.rerun()
-
-st.markdown("---")
-
-# Metrics
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("🚨 Events", stats.get("totalEvents", 0))
-col2.metric("📊 Avg Score", f"{stats.get('avgDeviationScore', 0):.2f}")
-col3.metric("🌙 Context", stats.get("mostCommonContext", "—"))
-col4.metric("📅 Days", recording_days)
+with col1:
+    st.markdown(f"""
+    <div class='metric-card'>
+        <div style='color: #64748b; font-size: 0.75rem; margin-bottom: 0.25rem;'>Events</div>
+        <div style='color: #0f172a; font-size: 1.25rem; font-weight: 600;'>{stats.get('totalEvents', 0)}</div>
+    </div>
+    """, unsafe_allow_html=True)
+with col2:
+    st.markdown(f"""
+    <div class='metric-card'>
+        <div style='color: #64748b; font-size: 0.75rem; margin-bottom: 0.25rem;'>Avg Deviation</div>
+        <div style='color: #0f172a; font-size: 1.25rem; font-weight: 600;'>{stats.get('avgDeviationScore', 0):.2f}</div>
+    </div>
+    """, unsafe_allow_html=True)
+with col3:
+    st.markdown(f"""
+    <div class='metric-card'>
+        <div style='color: #64748b; font-size: 0.75rem; margin-bottom: 0.25rem;'>Top Context</div>
+        <div style='color: #0f172a; font-size: 0.875rem; font-weight: 500;'>{stats.get('mostCommonContext', '—')[:12]}</div>
+    </div>
+    """, unsafe_allow_html=True)
+with col4:
+    st.markdown(f"""
+    <div class='metric-card'>
+        <div style='color: #64748b; font-size: 0.75rem; margin-bottom: 0.25rem;'>Days</div>
+        <div style='color: #0f172a; font-size: 1.25rem; font-weight: 600;'>{recording_days}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 st.markdown("---")
 
-# Graph with fixes
+# Patient Information
+st.markdown('<div class="section-header">Patient Information</div>', unsafe_allow_html=True)
+col_patient_left, col_patient_right = st.columns([1, 1])
+with col_patient_left:
+    st.markdown(f"""
+    <div class='metric-card'>
+        <div style='color: #64748b; font-size: 0.75rem; margin-bottom: 0.25rem;'>Patient ID</div>
+        <div style='color: #0f172a; font-size: 0.875rem; font-weight: 500;'>{findings.get('patientId', 'N/A')}</div>
+    </div>
+    """, unsafe_allow_html=True)
+with col_patient_right:
+    st.markdown(f"""
+    <div class='metric-card'>
+        <div style='color: #64748b; font-size: 0.75rem; margin-bottom: 0.25rem;'>Total Beats</div>
+        <div style='color: #0f172a; font-size: 0.875rem; font-weight: 500;'>{findings.get('totalBeatsProcessed', 0):,}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("---")
+
+# Event Timeline
 if events:
-    st.markdown('<div class="section-header">📈 Event Timeline (Fixed Readability)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Event Timeline</div>', unsafe_allow_html=True)
     fig = create_timeline_chart(events, recording_days)
     if fig:
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
     
-    st.markdown('<div class="section-header">🔍 Event Details</div>', unsafe_allow_html=True)
-    event_ids = [e["eventId"] for e in events]
-    selected_id = st.selectbox("Select:", event_ids)
-    selected_event = next((e for e in events if e["eventId"] == selected_id), events[0])
-    score = selected_event["deviationScore"]
-    color = "#ef4444" if score > 6 else ("#f59e0b" if score > 4 else "#a78bfa")
-    st.markdown(f"""<div class="event-card"><b style="color:{color};">Score: {score:.2f}</b><br>Day {selected_event['dayIndex']} | {selected_event['hourOfDay']:.1f}h | {selected_event['sleepState'].capitalize()}<br>Duration: {selected_event['durationSec']:.1f}s | Beats: {selected_event['beatsInvolved']}</div>""", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    # Event Details
+    st.markdown('<div class="section-header">Event Analysis</div>', unsafe_allow_html=True)
+    
+    col_event_select, col_event_detail = st.columns([1, 2])
+    with col_event_select:
+        event_ids = [e["eventId"] for e in events]
+        selected_id = st.selectbox("Event", event_ids, label_visibility="visible")
+    
+    with col_event_detail:
+        selected_event = next((e for e in events if e["eventId"] == selected_id), events[0])
+        score = selected_event["deviationScore"]
+        
+        if score > 6:
+            severity_color = "#dc2626"
+            severity_label = "High"
+        elif score > 4:
+            severity_color = "#f59e0b"
+            severity_label = "Moderate"
+        else:
+            severity_color = "#059669"
+            severity_label = "Low"
+        
+        st.markdown(f"""
+        <div class='event-card' style='border-left-color: {severity_color};'>
+            <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
+                <span style='font-weight: 600; color: #0f172a; font-size: 0.875rem;'>{selected_event['eventId']}</span>
+                <span style='background: {severity_color}20; color: {severity_color}; padding: 0.125rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500;'>{severity_label}</span>
+            </div>
+            <div style='display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;'>
+                <div>
+                    <small style='color: #64748b; font-size: 0.75rem;'>Score</small>
+                    <div style='color: #0f172a; font-weight: 500; font-size: 0.875rem;'>{score:.2f}</div>
+                </div>
+                <div>
+                    <small style='color: #64748b; font-size: 0.75rem;'>Duration</small>
+                    <div style='color: #0f172a; font-weight: 500; font-size: 0.875rem;'>{selected_event['durationSec']:.1f}s</div>
+                </div>
+                <div>
+                    <small style='color: #64748b; font-size: 0.75rem;'>Beats</small>
+                    <div style='color: #0f172a; font-weight: 500; font-size: 0.875rem;'>{selected_event['beatsInvolved']}</div>
+                </div>
+                <div>
+                    <small style='color: #64748b; font-size: 0.75rem;'>Day</small>
+                    <div style='color: #0f172a; font-weight: 500; font-size: 0.875rem;'>{selected_event['dayIndex']}</div>
+                </div>
+                <div>
+                    <small style='color: #64748b; font-size: 0.75rem;'>Hour</small>
+                    <div style='color: #0f172a; font-weight: 500; font-size: 0.875rem;'>{selected_event['hourOfDay']:.1f}h</div>
+                </div>
+                <div>
+                    <small style='color: #64748b; font-size: 0.75rem;'>State</small>
+                    <div style='color: #0f172a; font-weight: 500; font-size: 0.875rem;'>{selected_event['sleepState'].capitalize()}</div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 else:
-    st.info("✅ No anomalies detected")
+    st.markdown("""
+    <div class='metric-card' style='text-align: center; padding: 1.5rem;'>
+        <div style='font-size: 2rem; margin-bottom: 0.25rem;'>✅</div>
+        <div style='color: #0f172a; font-weight: 600; font-size: 0.875rem;'>No Anomalies</div>
+        <div style='color: #64748b; font-size: 0.75rem; margin-top: 0.25rem;'>Generate data to begin analysis</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 st.markdown("---")
 
-# AI Chat (ORIGINAL - Groq)
-st.markdown('<div class="section-header">🤖 AI Clinical Assistant (Groq)</div>', unsafe_allow_html=True)
+# AI Clinical Assistant
+st.markdown('<div class="section-header">AI Assistant</div>', unsafe_allow_html=True)
 
-# Show Groq connection status
-if GROQ_API_KEY:
-    st.success("✅ Groq AI Connected")
+# Connection status
+groq_key = os.getenv("GROQ_API_KEY", "").strip()
+if groq_key:
+    st.markdown("""
+    <div class='status-success' style='display: inline-block; margin-bottom: 0.5rem;'>
+        ✅ AI Connected
+    </div>
+    """, unsafe_allow_html=True)
 else:
-    st.warning("⚠️ GROQ_API_KEY not set - AI will run in offline mode")
+    st.markdown("""
+    <div class='status-warning' style='display: inline-block; margin-bottom: 0.5rem;'>
+        ⚠️ AI Not Configured
+    </div>
+    """, unsafe_allow_html=True)
+    st.caption("Add GROQ_API_KEY to enable AI")
 
+# Chat interface
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-for msg in st.session_state.chat_history:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+# Chat container
+chat_container = st.container()
+with chat_container:
+    for msg in st.session_state.chat_history:
+        if msg["role"] == "user":
+            st.markdown(f"""
+            <div style='background: #f1f5f9; padding: 0.5rem 0.75rem; border-radius: 6px; margin: 0.25rem 0; border-left: 3px solid #3b82f6;'>
+                <div style='font-weight: 600; color: #0f172a; margin-bottom: 0.25rem; font-size: 0.75rem;'>You</div>
+                <div style='color: #1e293b; font-size: 0.875rem;'>{msg['content']}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            content = msg["content"]
+            if content and ("error" in content.lower() or "❌" in content):
+                bg_color = "#fee2e2"
+                border_color = "#dc2626"
+            elif content and ("⚠️" in content):
+                bg_color = "#fef3c7"
+                border_color = "#d97706"
+            else:
+                bg_color = "#d1fae5"
+                border_color = "#059669"
+            
+            st.markdown(f"""
+            <div style='background: {bg_color}; padding: 0.5rem 0.75rem; border-radius: 6px; margin: 0.25rem 0; border-left: 3px solid {border_color};'>
+                <div style='font-weight: 600; color: #0f172a; margin-bottom: 0.25rem; font-size: 0.75rem;'>AI</div>
+                <div style='color: #1e293b; font-size: 0.875rem;'>{content}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-user_q = st.chat_input("Ask about your Holter monitor findings:")
+# Chat input
+user_q = st.chat_input("Ask about findings...")
 if user_q:
     st.session_state.chat_history.append({"role": "user", "content": user_q})
     
-    with st.chat_message("user"):
-        st.markdown(user_q)
+    # Route based on intent
+    if is_findings_question(user_q):
+        response = query_holter_agent(user_q, findings, external_report)
+    else:
+        response = query_groq_direct(user_q)
     
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            # Check if user is asking about sample/demo data
-            question_lower = user_q.lower()
-            use_sample = any(word in question_lower for word in ["sample", "demo", "example", "test", "data", "check"])
-            
-            # Always use sample data for now (backend might not be ready)
-            # This ensures AI responds even without Java backend
-            sample_findings = load_sample_findings()
-            
-            # Display sample data summary only for longer questions
-            if len(user_q.split()) > 2:
-                st.info(f"""
-📊 **Analyzing Sample Data**
-- **Patient:** {sample_findings['patientId']}
-- **Recording Duration:** {sample_findings['recordingDays']} days
-- **Total Beats:** {sample_findings['totalBeatsProcessed']:,}
-- **Events Found:** {len(sample_findings['events'])}
-- **Avg Deviation Score:** {sample_findings['summaryStats']['avgDeviationScore']:.2f}
-                """)
-            
-            # Use Groq to analyze sample data directly
-            groq_prompt = f"""
-You are a friendly clinical Holter monitor analyzer AI. The user is asking: "{user_q}"
-
-If this is a greeting (hi, hello, etc.), respond warmly and offer to help analyze Holter monitor data.
-
-If they're asking about Holter analysis, provide clinical insights:
-
-**Patient Information:**
-- Patient ID: {sample_findings['patientId']}
-- Recording Duration: {sample_findings['recordingDays']} days
-- Total Beats Processed: {sample_findings['totalBeatsProcessed']:,}
-
-**Events Summary:**
-- Total Events: {len(sample_findings['events'])}
-- Average Deviation Score: {sample_findings['summaryStats']['avgDeviationScore']:.2f}
-- Most Common Context: {sample_findings['summaryStats']['mostCommonContext']}
-
-**Event Details:**
-{json.dumps(sample_findings['events'][:5], indent=2)}
-
-Keep responses concise and friendly. Always end with an offer to help analyze specific metrics if appropriate.
-"""
-            
-            response = query_groq_direct(groq_prompt)
-        
-        st.markdown(response)
+    if response:
         st.session_state.chat_history.append({"role": "assistant", "content": response})
+    else:
+        st.session_state.chat_history.append({"role": "assistant", "content": "❌ Failed to get response"})
+    
+    st.rerun()
 
 # ════════════════════════════════════════════════════════════════════════════
 # DATABASE RECORDS & FAQ
